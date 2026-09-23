@@ -114,22 +114,6 @@
 
     let allStockData = [];
 
-    const initialDefaultData = [
-        { date: "09/23", name: "南亞", range: "230 - 240", strategy: "跌破 230 執行砍倉（停損）" },
-        { date: "09/23", name: "陽明", range: "60 - 62", strategy: "區間操作" },
-        { date: "09/23", name: "力積電", range: "70 - 74", strategy: "手腳要快，區間操作" },
-        { date: "09/23", name: "台玻", range: "58 - 61", strategy: "以 60 作為分水嶺，手腳要快" },
-        { date: "09/23", name: "聯電", range: "158 - 168", strategy: "跌破 158 執行砍倉（停損）" },
-        { date: "09/23", name: "中美晶", range: "188 - 200", strategy: "區間操作，手腳要快" },
-        { date: "09/23", name: "合晶", range: "未標註", strategy: "以 120 作為多空分水嶺" },
-        { date: "09/23", name: "短線賭博區", range: "--", strategy: "高風險：臻鼎、穩懋、日月光、景碩" },
-        { date: "09/22", name: "康舒", range: "47 - 53", strategy: "站穩 50，往上 53 易回頭；下方 47-49 主力短期回補底部" },
-        { date: "09/22", name: "台玻", range: "53 - 57", strategy: "以 55 作為分水嶺" },
-        { date: "09/22", name: "富采", range: "54 - 60", strategy: "站穩 61 以前，在此區間看待" },
-        { date: "09/22", name: "富喬", range: "88 - 93", strategy: "站穩 90 以前，以此區間機率最高" },
-        { date: "09/22", name: "聯電", range: "115 - 128 (收123)", strategy: "挑戰 130 元，128 往上賣，隨時調整" }
-    ];
-
     function switchTab(tabName) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
