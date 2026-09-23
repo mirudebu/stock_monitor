@@ -149,17 +149,6 @@
 
     function fetchDataFromFirebase() {
         db.collection("stocks").get().then((querySnapshot) => {
-            if (querySnapshot.empty) {
-                initialDefaultData.forEach(item => {
-                    db.collection("stocks").add({
-                        ...item,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                });
-                setTimeout(fetchDataFromFirebase, 1000);
-                return;
-            }
-
             allStockData = [];
             querySnapshot.forEach((doc) => {
                 allStockData.push(doc.data());
@@ -233,7 +222,7 @@
         let tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
         if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#888;">沒有符合的資料</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#888;">目前沒有任何資料，請至「資料輸入」新增！</td></tr>`;
             return;
         }
         data.forEach(item => {
