@@ -39,6 +39,7 @@
         .filter-status { font-size: 13px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
         .button-group { display: flex; gap: 6px; }
         .btn-recent { background: #3498db; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+        .btn-clear { background: #95a5a6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
         .btn-reset { background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
     </style>
 </head>
@@ -76,7 +77,7 @@
             </div>
             <div class="checkbox-group">
                 <input type="checkbox" id="inputImportant">
-                <label for="inputImportant" style="display:inline; cursor:pointer;">⭐（優先置頂）</label>
+                <label for="inputImportant" style="display:inline; cursor:pointer;">⭐ （優先置頂）</label>
             </div>
             <button type="submit" class="btn-submit">新增</button>
         </form>
@@ -86,7 +87,7 @@
     <div id="tab-query" class="tab-content">
         <div class="search-container">
             <select id="stockSelect" onchange="filterTable()"><option value="">-- 所有股票分類 --</option></select>
-            <input type="text" id="searchDate" placeholder="篩選日期 (例如: 09/23)..." onkeyup="filterTable()">
+            <select id="searchDateSelect" onchange="filterTable()"><option value="">-- 所有日期選單 --</option></select>
             <input type="text" id="searchInput" placeholder="關鍵字搜尋 (砍倉、分水嶺)..." onkeyup="filterTable()">
         </div>
 
@@ -95,6 +96,7 @@
             <div class="button-group">
                 <button class="btn-recent" onclick="showRecentThreeDays()">近三日</button>
                 <button class="btn-reset" onclick="resetFilters()">看全部</button>
+                <button class="btn-clear" onclick="clearSearchInputs()">清除搜尋</button>
             </div>
         </div>
 
@@ -123,7 +125,7 @@
 
     let allStockData = [];
 
-    // 初始化日期下拉選單（自動產生今天、昨天、前天以及前後幾天的選項）
+    // 初始化輸入頁面的日期下拉選單
     function initDateSelect() {
         let select = document.getElementById('inputDate');
         select.innerHTML = '';
@@ -177,7 +179,7 @@
 
         db.collection("stocks").add(newItem).then(() => {
             document.getElementById('stockForm').reset();
-            initDateSelect(); // 重設回今天
+            initDateSelect();
             let alertBox = document.getElementById('alertSuccess');
             alertBox.style.display = 'block';
             setTimeout(() => alertBox.style.display = 'none', 3000);
@@ -187,7 +189,6 @@
     }
 
     function fetchDataFromFirebase() {
-        // 預設由新到舊抓取資料
         db.collection("stocks").orderBy("createdAt", "desc").get().then((querySnapshot) => {
             allStockData = [];
             querySnapshot.forEach((doc) => {
@@ -195,7 +196,6 @@
             });
             initQueryUI();
         }).catch((error) => {
-            // 若尚未建立索引導致 orderBy 失敗，退回一般抓取再由前端手動排序
             db.collection("stocks").get().then((querySnapshot) => {
                 allStockData = [];
                 querySnapshot.forEach((doc) => {
@@ -207,17 +207,33 @@
     }
 
     function initQueryUI() {
-        let select = document.getElementById('stockSelect');
+        // 動態建立股票分類選單
+        let stockSelect = document.getElementById('stockSelect');
         let uniqueNames = [...new Set(allStockData.map(item => item.name))];
-        let currentVal = select.value;
-        select.innerHTML = '<option value="">-- 所有股票分類 --</option>';
+        let currentStockVal = stockSelect.value;
+        stockSelect.innerHTML = '<option value="">-- 所有股票分類 --</option>';
         uniqueNames.forEach(name => {
             let opt = document.createElement('option');
             opt.value = name;
             opt.textContent = name;
-            select.appendChild(opt);
+            stockSelect.appendChild(opt);
         });
-        select.value = currentVal;
+        stockSelect.value = currentStockVal;
+
+        // 動態建立資料庫出現過的日期選單
+        let dateSelect = document.getElementById('searchDateSelect');
+        let uniqueDates = [...new Set(allStockData.map(item => item.date))];
+        uniqueDates.sort((a, b) => b.localeCompare(a)); // 由新到舊排序
+        let currentDateVal = dateSelect.value;
+        dateSelect.innerHTML = '<option value="">-- 所有日期選單 --</option>';
+        uniqueDates.forEach(date => {
+            let opt = document.createElement('option');
+            opt.value = date;
+            opt.textContent = date;
+            dateSelect.appendChild(opt);
+        });
+        dateSelect.value = currentDateVal;
+
         filterTable(true);
     }
 
@@ -227,27 +243,23 @@
         return allDates.slice(0, 3);
     }
 
-    // 核心排序與篩選邏輯（星號置頂 + 新到舊排序）
     function sortData(data) {
         return data.sort((a, b) => {
-            // 1. 星號優先置頂
             if (a.isImportant && !b.isImportant) return -1;
             if (!a.isImportant && b.isImportant) return 1;
 
-            // 2. 依照寫入時間或日期由新到舊排序
             let timeA = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
             let timeB = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
             if (timeA !== timeB) {
                 return timeB - timeA;
             }
-            // 若時間戳相同，比對日期字串
             return b.date.localeCompare(a.date);
         });
     }
 
     function filterTable(isDefaultRecent = false) {
         let selectVal = document.getElementById("stockSelect").value;
-        let dateVal = document.getElementById("searchDate").value.toLowerCase();
+        let dateVal = document.getElementById("searchDateSelect").value;
         let keywordVal = document.getElementById("searchInput").value.toLowerCase();
         let statusText = document.getElementById("statusText");
 
@@ -259,7 +271,7 @@
             statusText.textContent = `目前顯示：最近三日 (${latestDates.join(', ')})`;
         } else {
             if (selectVal) filtered = filtered.filter(item => item.name === selectVal);
-            if (dateVal) filtered = filtered.filter(item => item.date.toLowerCase().includes(dateVal));
+            if (dateVal) filtered = filtered.filter(item => item.date === dateVal);
             if (keywordVal) filtered = filtered.filter(item => 
                 (item.strategy && item.strategy.toLowerCase().includes(keywordVal)) || 
                 (item.name && item.name.toLowerCase().includes(keywordVal)) ||
@@ -268,22 +280,24 @@
             statusText.textContent = "目前顯示：自訂篩選結果";
         }
 
-        // 確保呈現時符合星號置頂與新到舊
         filtered = sortData(filtered);
         renderTable(filtered);
     }
 
-    function showRecentThreeDays() {
+    function clearSearchInputs() {
         document.getElementById("stockSelect").value = "";
-        document.getElementById("searchDate").value = "";
+        document.getElementById("searchDateSelect").value = "";
         document.getElementById("searchInput").value = "";
+        filterTable(false);
+    }
+
+    function showRecentThreeDays() {
+        clearSearchInputs();
         filterTable(true);
     }
 
     function resetFilters() {
-        document.getElementById("stockSelect").value = "";
-        document.getElementById("searchDate").value = "";
-        document.getElementById("searchInput").value = "";
+        clearSearchInputs();
         document.getElementById("statusText").textContent = "目前顯示：所有歷史資料";
         renderTable(sortData([...allStockData]));
     }
