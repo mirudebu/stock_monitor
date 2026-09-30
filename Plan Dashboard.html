@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Trading Journal & Plan Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+    <!-- Top Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600/20 p-2 rounded-lg border border-blue-500/30 text-blue-400">
+                    <i class="fa-solid me-0.5 fa-chart-line text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">
+                        交易檢討與計晝儀表板
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Stock Journal & Strategy Planner</p>
+                </div>
+            </div>
+
+            <!-- Firebase Connection & Color Settings -->
+            <div class="flex items-center space-x-3 text-xs sm:text-sm">
+                <!-- Color Theme Rule Toggle (Red/Green Customization) -->
+                <button id="colorRuleBtn" onclick="toggleColorRule()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 flex items-center space-x-2 transition">
+                    <i class="fa-solid fa-palette text-amber-400"></i>
+                    <span id="colorRuleText" class="hidden md:inline">紅漲綠跌 (台股)</span>
+                </button>
+
+                <!-- Firebase Status Badge -->
+                <div id="firebaseStatus" class="flex items-center space-x-2 bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-lg">
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span class="font-medium text-xs sm:text-sm" id="firebaseStatusText">Firebase 已連線 (stock-14235)</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Banner Alert when empty DB -->
+        <div id="seedBanner" class="hidden bg-slate-900 border border-blue-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
+                    <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-slate-200">Firebase Firestore 資料庫已連接，尚無交易資料</h3>
+                    <p class="text-xs text-slate-400">您可以手動新增交易，或點擊下方按鈕直接一鍵寫入預設範例資料。</p>
+                </div>
+            </div>
+            <button onclick="seedSampleData()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs sm:text-sm rounded-lg shadow-lg shadow-blue-600/20 transition whitespace-nowrap">
+                <i class="fa-solid fa-database mr-1.5"></i>一鍵匯入範例資料到 Firebase
+            </button>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 relative overflow-hidden">
+                <p class="text-xs text-slate-400 font-medium">總累積損益 (Total P&L)</p>
+                <h2 id="kpiTotalPnL" class="text-xl sm:text-2xl font-bold mt-1 text-slate-200">$0</h2>
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-slate-100 text-5xl">
+                    <i class="fa-solid fa-coins"></i>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 relative overflow-hidden">
+                <p class="text-xs text-slate-400 font-medium">交易勝率 (Win Rate)</p>
+                <h2 id="kpiWinRate" class="text-xl sm:text-2xl font-bold mt-1 text-slate-200">0.0%</h2>
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-slate-100 text-5xl">
+                    <i class="fa-solid fa-trophy"></i>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 relative overflow-hidden">
+                <p class="text-xs text-slate-400 font-medium">盈虧比 (Profit/Loss Ratio)</p>
+                <h2 id="kpiPLRatio" class="text-xl sm:text-2xl font-bold mt-1 text-slate-200">0.00</h2>
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-slate-100 text-5xl">
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 relative overflow-hidden">
+                <p class="text-xs text-slate-400 font-medium">總筆數 / 盈利 / 虧損</p>
+                <h2 id="kpiTradeCounts" class="text-xl sm:text-2xl font-bold mt-1 text-slate-200">0 / 0 / 0</h2>
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-slate-100 text-5xl">
+                    <i class="fa-solid fa-list-check"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex border-b border-slate-800 space-x-6 text-sm font-medium">
+            <button id="tabLogsBtn" onclick="switchTab('logs')" class="py-3 border-b-2 border-blue-500 text-blue-400 flex items-center space-x-2">
+                <i class="fa-solid fa-book-journal-whills"></i>
+                <span>交易實戰檢討</span>
+            </button>
+            <button id="tabPlansBtn" onclick="switchTab('plans')" class="py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+                <i class="fa-solid fa-compass"></i>
+                <span>事前交易計畫</span>
+            </button>
+            <button id="tabAnalyticsBtn" onclick="switchTab('analytics')" class="py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+                <i class="fa-solid fa-chart-pie"></i>
+                <span>績效圖表分析</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: TRADE LOGS -->
+        <section id="tabLogs" class="space-y-4">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-filter text-slate-400"></i>
+                    <span class="text-sm font-medium text-slate-300">資料篩選:</span>
+                    <select id="filterTag" onchange="renderTradeLogs()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500">
+                        <option value="ALL">全部策略標籤</option>
+                        <option value="突破">突破</option>
+                        <option value="拉回">拉回</option>
+                        <option value="當沖">當沖</option>
+                        <option value="波段">波段</option>
+                    </select>
+                </div>
+                <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                    <button onclick="exportData('csv')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg text-xs flex items-center space-x-1 transition">
+                        <i class="fa-solid fa-file-csv text-emerald-400"></i>
+                        <span>匯出 CSV</span>
+                    </button>
+                    <button onclick="exportData('json')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg text-xs flex items-center space-x-1 transition">
+                        <i class="fa-solid fa-file-code text-amber-400"></i>
+                        <span>匯出 JSON</span>
+                    </button>
+                    <button onclick="openTradeModal()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-lg shadow-blue-600/20 transition">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>新增實戰檢討</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Trade Logs Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+                <table class="w-full text-left text-xs sm:text-sm text-slate-300">
+                    <thead class="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase font-medium">
+                        <tr>
+                            <th class="py-3 px-4">平倉日期</th>
+                            <th class="py-3 px-4">代號/名稱</th>
+                            <th class="py-3 px-4">方向</th>
+                            <th class="py-3 px-4">進/出場價</th>
+                            <th class="py-3 px-4">股數</th>
+                            <th class="py-3 px-4">損益金額</th>
+                            <th class="py-3 px-4">報酬率</th>
+                            <th class="py-3 px-4">策略標籤</th>
+                            <th class="py-3 px-4">檢討備註</th>
+                            <th class="py-3 px-4 text-right">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeLogsTableBody" class="divide-y divide-slate-800">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TAB 2: TRADE PLANS -->
+        <section id="tabPlans" class="hidden space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Interactive Calculator & New Plan Form -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <div class="flex items-center space-x-2 border-b border-slate-800 pb-3">
+                        <i class="fa-solid fa-calculator text-blue-400"></i>
+                        <h3 class="font-semibold text-slate-200">建立交易計畫與風險計算</h3>
+                    </div>
+                    
+                    <form id="planForm" onsubmit="handleSavePlan(event)" class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">股票代號 / 名稱</label>
+                            <input type="text" id="planSymbol" placeholder="例如: 2330 台積電" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">預計進場價</label>
+                                <input type="number" step="0.01" id="planEntry" oninput="calculatePlanMetrics()" placeholder="100.0" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">預計股數</label>
+                                <input type="number" id="planShares" oninput="calculatePlanMetrics()" placeholder="1000" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">停損目標價</label>
+                                <input type="number" step="0.01" id="planStopLoss" oninput="calculatePlanMetrics()" placeholder="95.0" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">停利目標價</label>
+                                <input type="number" step="0.01" id="planTakeProfit" oninput="calculatePlanMetrics()" placeholder="115.0" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Risk/Reward Metrics Preview -->
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">風報比 (R/R Ratio):</span>
+                                <span id="calcRR" class="font-bold text-amber-400">0.00</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">預計潛在虧損:</span>
+                                <span id="calcLoss" class="font-medium text-slate-200">$0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">預計潛在利潤:</span>
+                                <span id="calcProfit" class="font-medium text-slate-200">$0</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">計畫邏輯 / 進場條件</label>
+                            <textarea id="planNotes" rows="3" placeholder="例如: 突破前高並站穩 5MA，成交量放大..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"></textarea>
+                        </div>
+
+                        <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-600/20 transition">
+                            <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>儲存計畫至 Firebase
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Active Plans Cards -->
+                <div class="lg:col-span-2 space-y-4">
+                    <h3 class="font-semibold text-slate-200 flex items-center justify-between">
+                        <span>目前待執行計畫</span>
+                        <span id="planCountBadge" class="text-xs font-normal text-slate-400 bg-slate-800 px-2.5 py-1 rounded-full">0 個計畫</span>
+                    </h3>
+                    <div id="plansContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: ANALYTICS -->
+        <section id="tabAnalytics" class="hidden space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Cumulative PnL Curve Chart -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center space-x-2">
+                        <i class="fa-solid fa-chart-line text-blue-400"></i>
+                        <span>累積損益走勢圖</span>
+                    </h3>
+                    <div class="h-64">
+                        <canvas id="pnlChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Win/Loss Ratio Doughnut Chart -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center space-x-2">
+                        <i class="fa-solid fa-chart-pie text-indigo-400"></i>
+                        <span>交易獲利 vs 虧損分佈</span>
+                    </h3>
+                    <div class="h-64 flex justify-center items-center">
+                        <canvas id="winLossChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: Add/Edit Trade Review -->
+    <div id="tradeModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-4 shadow-2xl relative">
+            <button onclick="closeTradeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            
+            <h3 id="modalTitle" class="text-lg font-bold text-slate-100 flex items-center space-x-2">
+                <i class="fa-solid fa-pen-to-square text-blue-400"></i>
+                <span>新增交易實戰紀錄</span>
+            </h3>
+
+            <form id="tradeForm" onsubmit="handleSaveTrade(event)" class="space-y-3">
+                <input type="hidden" id="tradeId">
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">平倉日期</label>
+                        <input type="date" id="tradeDate" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">股票代號/名稱</label>
+                        <input type="text" id="tradeSymbol" placeholder="例如: 2330 台積電" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">交易方向</label>
+                        <select id="tradeType" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                            <option value="BUY">做多 (Long)</option>
+                            <option value="SELL">做空 (Short)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">買入/賣出均價</label>
+                        <input type="number" step="0.01" id="tradeEntry" placeholder="100" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">平倉均價</label>
+                        <input type="number" step="0.01" id="tradeExit" placeholder="110" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">交易股數</label>
+                        <input type="number" id="tradeShares" placeholder="1000" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">策略標籤</label>
+                        <select id="tradeTag" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                            <option value="突破">突破</option>
+                            <option value="拉回">拉回</option>
+                            <option value="當沖">當沖</option>
+                            <option value="波段">波段</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">交易檢討 / 心得備註</label>
+                    <textarea id="tradeNotes" rows="3" placeholder="紀律執行狀況、心態檢討、進出場理由..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" onclick="closeTradeModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm">取消</button>
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-blue-600/20">儲存紀錄</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. FIREBASE CONFIGURATION & INITIALIZATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyB_uvGrQWWa15WPKDo9cDaFgHQJTfBc3dg",
+            authDomain: "stock-14235.firebaseapp.com",
+            projectId: "stock-14235",
+            storageBucket: "stock-14235.firebasestorage.app",
+            messagingSenderId: "604839474450",
+            appId: "1:604839474450:web:db2c1ba2617d648c82efcb",
+            measurementId: "G-D4VMTF8RLE"
+        };
+
+        // Global State Variables
+        let db = null;
+        let tradeLogs = [];
+        let tradePlans = [];
+        let colorRule = 'TW'; // 'TW' (Red=Gain) or 'US' (Green=Gain)
+        let pnlChartInstance = null;
+        let winLossChartInstance = null;
+
+        // Sample Data for First-time Seeding
+        const sampleLogs = [
+            { id: 'sample_1', date: '2026-09-15', symbol: '2330 台積電', type: 'BUY', entry: 920, exit: 960, shares: 1000, pnl: 40000, roi: 4.35, tag: '突破', notes: '台積電站穩千元關卡前順利突破進場，紀律達標停利。' },
+            { id: 'sample_2', date: '2026-09-20', symbol: '2454 聯發科', type: 'BUY', entry: 1150, exit: 1110, shares: 1000, pnl: -40000, roi: -3.48, tag: '拉回', notes: '大盤拉回跌破 20MA 觸及停損點，依計畫果斷停損。' },
+            { id: 'sample_3', date: '2026-09-28', symbol: '2317 鴻海', type: 'BUY', entry: 180, exit: 195, shares: 2000, pnl: 30000, roi: 8.33, tag: '波段', notes: 'AI伺服器拉貨營收亮眼，波段持有順利達標。' }
+        ];
+
+        const samplePlans = [
+            { id: 'plan_1', symbol: '3231 緯創', entry: 105, shares: 2000, stopLoss: 99, takeProfit: 120, rr: '2.50', potentialLoss: 12000, potentialProfit: 30000, notes: '等待量縮拉回回測十日線買進。' }
+        ];
+
+        // Start Firebase Connection
+        function initFirebase() {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.firestore();
+
+                // Setup Real-time Listeners
+                listenToFirestore();
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                document.getElementById('firebaseStatusText').innerText = 'Firebase 連線失敗';
+                document.getElementById('firebaseStatus').className = 'flex items-center space-x-2 bg-rose-950/80 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-lg';
+            }
+        }
+
+        function listenToFirestore() {
+            if (!db) return;
+
+            // Listen to Trade Logs Collection
+            db.collection('trade_logs').onSnapshot(snapshot => {
+                tradeLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Sort by Date descending
+                tradeLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                checkDataPresence();
+                renderAll();
+            }, error => {
+                console.error("Firestore trade_logs Error:", error);
+            });
+
+            // Listen to Trade Plans Collection
+            db.collection('trade_plans').onSnapshot(snapshot => {
+                tradePlans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderPlans();
+            }, error => {
+                console.error("Firestore trade_plans Error:", error);
+            });
+        }
+
+        function checkDataPresence() {
+            const seedBanner = document.getElementById('seedBanner');
+            if (tradeLogs.length === 0 && tradePlans.length === 0) {
+                seedBanner.classList.remove('hidden');
+            } else {
+                seedBanner.classList.add('hidden');
+            }
+        }
+
+        async function seedSampleData() {
+            if (!db) return;
+            try {
+                const batch = db.batch();
+                sampleLogs.forEach(log => {
+                    const ref = db.collection('trade_logs').doc(log.id);
+                    batch.set(ref, log);
+                });
+                samplePlans.forEach(plan => {
+                    const ref = db.collection('trade_plans').doc(plan.id);
+                    batch.set(ref, plan);
+                });
+                await batch.commit();
+            } catch (err) {
+                console.error("Error seeding sample data:", err);
+            }
+        }
+
+        // Color Palette Rule Manager (TW vs US)
+        function toggleColorRule() {
+            colorRule = colorRule === 'TW' ? 'US' : 'TW';
+            document.getElementById('colorRuleText').innerText = colorRule === 'TW' ? '紅漲綠跌 (台股)' : '綠漲紅跌 (美股)';
+            renderAll();
+        }
+
+        function getGainClass(val) {
+            if (val > 0) return colorRule === 'TW' ? 'text-rose-400 font-semibold' : 'text-emerald-400 font-semibold';
+            if (val < 0) return colorRule === 'TW' ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold';
+            return 'text-slate-400';
+        }
+
+        // Global UI Render Trigger
+        function renderAll() {
+            renderKPIs();
+            renderTradeLogs();
+            renderPlans();
+            renderCharts();
+        }
+
+        // Render Metric KPIs
+        function renderKPIs() {
+            const totalPnL = tradeLogs.reduce((acc, curr) => acc + Number(curr.pnl || 0), 0);
+            const wins = tradeLogs.filter(t => t.pnl > 0);
+            const losses = tradeLogs.filter(t => t.pnl < 0);
+            
+            const winRate = tradeLogs.length ? ((wins.length / tradeLogs.length) * 100).toFixed(1) : '0.0';
+            
+            const totalWinAmt = wins.reduce((acc, c) => acc + c.pnl, 0);
+            const totalLossAmt = Math.abs(losses.reduce((acc, c) => acc + c.pnl, 0));
+            const plRatio = totalLossAmt > 0 ? (totalWinAmt / totalLossAmt).toFixed(2) : (totalWinAmt > 0 ? '∞' : '0.00');
+
+            const kpiTotalPnL = document.getElementById('kpiTotalPnL');
+            kpiTotalPnL.innerText = (totalPnL >= 0 ? '+' : '') + '$' + totalPnL.toLocaleString();
+            kpiTotalPnL.className = `text-xl sm:text-2xl font-bold mt-1 ${getGainClass(totalPnL)}`;
+
+            document.getElementById('kpiWinRate').innerText = `${winRate}%`;
+            document.getElementById('kpiPLRatio').innerText = plRatio;
+            document.getElementById('kpiTradeCounts').innerText = `${tradeLogs.length} / ${wins.length} / ${losses.length}`;
+        }
+
+        // Render Trade Logs Table
+        function renderTradeLogs() {
+            const tbody = document.getElementById('tradeLogsTableBody');
+            const filterTag = document.getElementById('filterTag').value;
+            tbody.innerHTML = '';
+
+            const filteredLogs = filterTag === 'ALL' ? tradeLogs : tradeLogs.filter(t => t.tag === filterTag);
+
+            if (filteredLogs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="10" class="text-center py-8 text-slate-500">
+                            尚未發掘交易紀錄，點擊「新增實戰檢討」開始儲存至 Firebase
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredLogs.forEach(log => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/50 transition border-b border-slate-800/60';
+                
+                const pnlClass = getGainClass(log.pnl);
+                const roiClass = getGainClass(log.roi);
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-slate-300 font-mono">${log.date}</td>
+                    <td class="py-3 px-4 font-semibold text-slate-200">${log.symbol}</td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-0.5 rounded text-xs ${log.type === 'BUY' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'}">
+                            ${log.type === 'BUY' ? '做多' : '做空'}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 font-mono">${log.entry} / ${log.exit}</td>
+                    <td class="py-3 px-4 font-mono">${log.shares.toLocaleString()}</td>
+                    <td class="py-3 px-4 font-mono ${pnlClass}">${log.pnl >= 0 ? '+' : ''}$${log.pnl.toLocaleString()}</td>
+                    <td class="py-3 px-4 font-mono ${roiClass}">${log.roi >= 0 ? '+' : ''}${log.roi}%</td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 rounded text-xs">${log.tag || '無'}</span>
+                    </td>
+                    <td class="py-3 px-4 text-slate-400 max-w-xs truncate" title="${log.notes || ''}">${log.notes || '-'}</td>
+                    <td class="py-3 px-4 text-right space-x-2">
+                        <button onclick="editTrade('${log.id}')" class="text-slate-400 hover:text-blue-400 transition"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteTrade('${log.id}')" class="text-slate-400 hover:text-rose-400 transition"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Render Active Trade Plans
+        function renderPlans() {
+            const container = document.getElementById('plansContainer');
+            const countBadge = document.getElementById('planCountBadge');
+            container.innerHTML = '';
+
+            countBadge.innerText = `${tradePlans.length} 個計畫`;
+
+            if (tradePlans.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full bg-slate-900/40 border border-dashed border-slate-800 rounded-xl p-8 text-center text-slate-500">
+                        目前沒有待執行計畫，可在左側設立您的預定進出場策略。
+                    </div>
+                `;
+                return;
+            }
+
+            tradePlans.forEach(plan => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 relative hover:border-slate-700 transition';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h4 class="font-bold text-slate-200 text-base">${plan.symbol}</h4>
+                            <p class="text-xs text-slate-400">進場價: <span class="text-slate-200 font-mono font-semibold">${plan.entry}</span> (${plan.shares} 股)</p>
+                        </div>
+                        <button onclick="deletePlan('${plan.id}')" class="text-slate-500 hover:text-rose-400 transition">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                        <div>
+                            <span class="text-slate-400 block">停損標的:</span>
+                            <span class="font-mono text-rose-400 font-medium">${plan.stopLoss}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block">停利目標:</span>
+                            <span class="font-mono text-emerald-400 font-medium">${plan.takeProfit}</span>
+                        </div>
+                        <div class="col-span-2 pt-1 border-t border-slate-800 flex justify-between items-center">
+                            <span class="text-slate-400">預估風報比 (R/R):</span>
+                            <span class="font-mono font-bold text-amber-400 text-sm">${plan.rr}</span>
+                        </div>
+                    </div>
+
+                    ${plan.notes ? `<p class="text-xs text-slate-400 bg-slate-800/40 p-2 rounded">${plan.notes}</p>` : ''}
+
+                    <button onclick="convertPlanToTrade('${plan.id}')" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-blue-400 rounded-lg text-xs font-medium flex items-center justify-center space-x-1.5 transition">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>轉為實戰檢討</span>
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Calculate Plan Risk/Reward Metrics Dynamically
+        function calculatePlanMetrics() {
+            const entry = parseFloat(document.getElementById('planEntry').value) || 0;
+            const shares = parseFloat(document.getElementById('planShares').value) || 0;
+            const stopLoss = parseFloat(document.getElementById('planStopLoss').value) || 0;
+            const takeProfit = parseFloat(document.getElementById('planTakeProfit').value) || 0;
+
+            if (entry > 0 && stopLoss > 0 && takeProfit > 0 && shares > 0) {
+                const lossPerShare = Math.abs(entry - stopLoss);
+                const profitPerShare = Math.abs(takeProfit - entry);
+                
+                const totalLoss = lossPerShare * shares;
+                const totalProfit = profitPerShare * shares;
+                const rr = lossPerShare > 0 ? (profitPerShare / lossPerShare).toFixed(2) : '0.00';
+
+                document.getElementById('calcRR').innerText = rr;
+                document.getElementById('calcLoss').innerText = `$${totalLoss.toLocaleString()}`;
+                document.getElementById('calcProfit').innerText = `$${totalProfit.toLocaleString()}`;
+            } else {
+                document.getElementById('calcRR').innerText = '0.00';
+                document.getElementById('calcLoss').innerText = '$0';
+                document.getElementById('calcProfit').innerText = '$0';
+            }
+        }
+
+        // Modal Handlers
+        function openTradeModal(editData = null) {
+            const modal = document.getElementById('tradeModal');
+            const form = document.getElementById('tradeForm');
+            
+            form.reset();
+            if (editData) {
+                document.getElementById('modalTitle').innerText = '編輯交易實戰紀錄';
+                document.getElementById('tradeId').value = editData.id;
+                document.getElementById('tradeDate').value = editData.date;
+                document.getElementById('tradeSymbol').value = editData.symbol;
+                document.getElementById('tradeType').value = editData.type;
+                document.getElementById('tradeEntry').value = editData.entry;
+                document.getElementById('tradeExit').value = editData.exit;
+                document.getElementById('tradeShares').value = editData.shares;
+                document.getElementById('tradeTag').value = editData.tag || '突破';
+                document.getElementById('tradeNotes').value = editData.notes || '';
+            } else {
+                document.getElementById('modalTitle').innerText = '新增交易實戰紀錄';
+                document.getElementById('tradeId').value = '';
+                document.getElementById('tradeDate').value = new Date().toISOString().split('T')[0];
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeTradeModal() {
+            document.getElementById('tradeModal').classList.add('hidden');
+        }
+
+        // Save/Update Trade Log
+        async function handleSaveTrade(e) {
+            e.preventDefault();
+            const id = document.getElementById('tradeId').value;
+            const date = document.getElementById('tradeDate').value;
+            const symbol = document.getElementById('tradeSymbol').value;
+            const type = document.getElementById('tradeType').value;
+            const entry = parseFloat(document.getElementById('tradeEntry').value);
+            const exit = parseFloat(document.getElementById('tradeExit').value);
+            const shares = parseInt(document.getElementById('tradeShares').value);
+            const tag = document.getElementById('tradeTag').value;
+            const notes = document.getElementById('tradeNotes').value;
+
+            // P&L & ROI Calculation
+            const pnl = type === 'BUY' ? (exit - entry) * shares : (entry - exit) * shares;
+            const roi = parseFloat(((pnl / (entry * shares)) * 100).toFixed(2));
+
+            const tradeObj = { date, symbol, type, entry, exit, shares, pnl, roi, tag, notes };
+
+            try {
+                if (id) {
+                    await db.collection('trade_logs').doc(id).update(tradeObj);
+                } else {
+                    await db.collection('trade_logs').add(tradeObj);
+                }
+                closeTradeModal();
+            } catch (err) {
+                console.error("Save Trade Error:", err);
+            }
+        }
+
+        function editTrade(id) {
+            const trade = tradeLogs.find(t => t.id === id);
+            if (trade) openTradeModal(trade);
+        }
+
+        async function deleteTrade(id) {
+            if (!confirm('確定要刪除這筆交易檢討紀錄嗎？')) return;
+            try {
+                await db.collection('trade_logs').doc(id).delete();
+            } catch (err) {
+                console.error("Delete Trade Error:", err);
+            }
+        }
+
+        // Save Trade Plan
+        async function handleSavePlan(e) {
+            e.preventDefault();
+            const symbol = document.getElementById('planSymbol').value;
+            const entry = parseFloat(document.getElementById('planEntry').value);
+            const shares = parseInt(document.getElementById('planShares').value);
+            const stopLoss = parseFloat(document.getElementById('planStopLoss').value);
+            const takeProfit = parseFloat(document.getElementById('planTakeProfit').value);
+            const notes = document.getElementById('planNotes').value;
+
+            const lossPerShare = Math.abs(entry - stopLoss);
+            const profitPerShare = Math.abs(takeProfit - entry);
+            const rr = lossPerShare > 0 ? (profitPerShare / lossPerShare).toFixed(2) : '0.00';
+
+            const planObj = { symbol, entry, shares, stopLoss, takeProfit, rr, potentialLoss: lossPerShare * shares, potentialProfit: profitPerShare * shares, notes };
+
+            try {
+                await db.collection('trade_plans').add(planObj);
+                document.getElementById('planForm').reset();
+                calculatePlanMetrics();
+            } catch (err) {
+                console.error("Save Plan Error:", err);
+            }
+        }
+
+        async function deletePlan(id) {
+            try {
+                await db.collection('trade_plans').doc(id).delete();
+            } catch (err) {
+                console.error("Delete Plan Error:", err);
+            }
+        }
+
+        function convertPlanToTrade(planId) {
+            const plan = tradePlans.find(p => p.id === planId);
+            if (!plan) return;
+
+            openTradeModal({
+                id: '',
+                date: new Date().toISOString().split('T')[0],
+                symbol: plan.symbol,
+                type: 'BUY',
+                entry: plan.entry,
+                exit: plan.takeProfit,
+                shares: plan.shares,
+                tag: '突破',
+                notes: `從交易計畫轉入: ${plan.notes || ''}`
+            });
+            switchTab('logs');
+        }
+
+        // Render Chart.js Analytics
+        function renderCharts() {
+            const sortedLogs = [...tradeLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            // Cumulative PnL Curve Data
+            let runningPnL = 0;
+            const labels = sortedLogs.map(l => l.date);
+            const pnlData = sortedLogs.map(l => {
+                runningPnL += l.pnl;
+                return runningPnL;
+            });
+
+            // Destroy existing chart instances
+            if (pnlChartInstance) pnlChartInstance.destroy();
+            if (winLossChartInstance) winLossChartInstance.destroy();
+
+            // PnL Curve Line Chart
+            const ctxPnL = document.getElementById('pnlChart').getContext('2d');
+            pnlChartInstance = new Chart(ctxPnL, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '累積損益 ($)',
+                        data: pnlData,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } }
+                    }
+                }
+            });
+
+            // Win/Loss Ratio Doughnut Chart
+            const wins = tradeLogs.filter(t => t.pnl > 0).length;
+            const losses = tradeLogs.filter(t => t.pnl < 0).length;
+            const ties = tradeLogs.filter(t => t.pnl === 0).length;
+
+            const ctxWinLoss = document.getElementById('winLossChart').getContext('2d');
+            const winColor = colorRule === 'TW' ? '#f43f5e' : '#10b981';
+            const lossColor = colorRule === 'TW' ? '#10b981' : '#f43f5e';
+
+            winLossChartInstance = new Chart(ctxWinLoss, {
+                type: 'doughnut',
+                data: {
+                    labels: ['獲利交易', '虧損交易', '平手'],
+                    datasets: [{
+                        data: [wins, losses, ties],
+                        backgroundColor: [winColor, lossColor, '#64748b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8' } }
+                    }
+                }
+            });
+        }
+
+        // Navigation Tabs Switcher
+        function switchTab(tab) {
+            ['logs', 'plans', 'analytics'].forEach(t => {
+                const btn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}Btn`);
+                const sec = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+                
+                if (t === tab) {
+                    btn.className = 'py-3 border-b-2 border-blue-500 text-blue-400 flex items-center space-x-2';
+                    sec.classList.remove('hidden');
+                } else {
+                    btn.className = 'py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2';
+                    sec.classList.add('hidden');
+                }
+            });
+            if (tab === 'analytics') renderCharts();
+        }
+
+        // Export Data to CSV or JSON
+        function exportData(type) {
+            if (tradeLogs.length === 0) {
+                alert('尚無交易紀錄可供匯出');
+                return;
+            }
+
+            if (type === 'json') {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tradeLogs, null, 2));
+                const a = document.createElement('a');
+                a.href = dataStr;
+                a.download = `trade_logs_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            } else if (type === 'csv') {
+                let csvContent = "data:text/csv;charset=utf-8,\uFEFF平倉日期,股票名稱,方向,進場價,出場價,股數,損益金額,報酬率(%),策略標籤,備註\n";
+                tradeLogs.forEach(l => {
+                    csvContent += `${l.date},${l.symbol},${l.type},${l.entry},${l.exit},${l.shares},${l.pnl},${l.roi},${l.tag || ''},${l.notes || ''}\n`;
+                });
+                const encodedUri = encodeURI(csvContent);
+                const a = document.createElement('a');
+                a.href = encodedUri;
+                a.download = `trade_logs_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+            }
+        }
+
+        // App Launch
+        window.onload = function() {
+            initFirebase();
+        };
+    </script>
+</body>
+</html>
